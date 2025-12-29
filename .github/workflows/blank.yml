@@ -5,12 +5,11 @@ on:
     branches:
       - main
     paths:
-      - '**.json'          # 只有 main 分支下的 JSON 文件变动时才触发
-      # 如果你只想限制在 rules 目录下，请改为 - 'rules/*.json'
-  workflow_dispatch:      # 保持手动触发按钮
+      - '**.json'       # 只有 JSON 文件变动时触发
+  workflow_dispatch:    # 手动触发按钮
 
 permissions:
-  contents: write
+  contents: write       # 允许发布 Release 和提交代码
 
 jobs:
   build:
@@ -23,22 +22,32 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download sing-box (Pre-release)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LATEST=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases | jq -r '.[0].tag_name')
-          VERSION=${LATEST#v}
+          # 使用 gh api 获取最新 tag (包含 pre-release)，解决速率限制问题
+          LATEST_TAG=$(gh api repos/SagerNet/sing-box/releases --jq '.[0].tag_name')
+          VERSION=${LATEST_TAG#v}
+          
           echo "📦 Downloading sing-box version: $VERSION"
-          wget -q "https://github.com/SagerNet/sing-box/releases/download/${LATEST}/sing-box-${VERSION}-linux-amd64.tar.gz"
+          wget -q "https://github.com/SagerNet/sing-box/releases/download/${LATEST_TAG}/sing-box-${VERSION}-linux-amd64.tar.gz"
           tar -xzf "sing-box-${VERSION}-linux-amd64.tar.gz"
           sudo mv "sing-box-${VERSION}-linux-amd64/sing-box" /usr/local/bin/
           sing-box version
 
       - name: Download mihomo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LATEST=$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-          wget -q "https://github.com/MetaCubeX/mihomo/releases/download/${LATEST}/mihomo-linux-amd64-${LATEST}.gz"
-          gunzip mihomo-linux-amd64-${LATEST}.gz
-          chmod +x mihomo-linux-amd64-${LATEST}
-          sudo mv mihomo-linux-amd64-${LATEST} /usr/local/bin/mihomo
+          # 使用 gh release view 获取最新正式版 tag
+          LATEST_TAG=$(gh release view MetaCubeX/mihomo --json tagName -q .tagName)
+          
+          echo "📦 Downloading mihomo version: $LATEST_TAG"
+          wget -q "https://github.com/MetaCubeX/mihomo/releases/download/${LATEST_TAG}/mihomo-linux-amd64-${LATEST_TAG}.gz"
+          gunzip mihomo-linux-amd64-${LATEST_TAG}.gz
+          chmod +x mihomo-linux-amd64-${LATEST_TAG}
+          sudo mv mihomo-linux-amd64-${LATEST_TAG} /usr/local/bin/mihomo
+          mihomo -v
 
       - name: Compile rule sets
         run: |
@@ -57,6 +66,7 @@ jobs:
             # === 2. 提取并生成 Mihomo .mrs (域名类) ===
             temp_domain="temp_domain.yaml"
             echo "payload:" > "$temp_domain"
+            # 提取 domain_suffix 和 domain
             jq -r '.rules[].domain_suffix[]? // empty' "$json_file" | sed "s/^/  - '+./" | sed "s/$/'/" >> "$temp_domain"
             jq -r '.rules[].domain[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_domain"
             
@@ -68,6 +78,7 @@ jobs:
             # === 3. 提取并生成 Mihomo .mrs (IP 类) ===
             temp_ip="temp_ip.yaml"
             echo "payload:" > "$temp_ip"
+            # 提取 ip_cidr
             jq -r '.rules[].ip_cidr[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_ip"
             
             if [ $(grep -c "  - " "$temp_ip") -gt 0 ]; then
@@ -79,12 +90,14 @@ jobs:
           done
 
       - name: Delete existing release
-        run: |
-          gh release delete latest --yes --cleanup-tag || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
 
       - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create latest \
             --title "Rule Sets (Auto Updated)" \
@@ -93,16 +106,15 @@ jobs:
             ## 📋 文件列表
             $(ls -1 release_files/ | sed 's/^/- /')" \
             release_files/*
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit and push
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          # 将编译后的文件同步到仓库（可选，如果只需要 Release 可以删掉这部分）
+          
           mkdir -p ./compiled_rules/
           cp release_files/* ./compiled_rules/
+          
           git add ./compiled_rules/*
           if git diff --staged --quiet; then
             echo "No changes to commit"
