@@ -37,14 +37,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 修复：使用 gh api 获取最新 tag (无论是否为 pre-release)，解决 release not found 问题
-          LATEST_TAG=$(gh api repos/MetaCubeX/mihomo/releases --jq '.[0].tag_name')
+          # === 修复重点 ===
+          # 不再猜测文件名，而是直接筛选 assets 列表
+          # 逻辑：查找包含 "linux-amd64" 且以 ".gz" 结尾，同时不包含 "compatible" (旧架构) 的文件链接
+          DOWNLOAD_URL=$(gh api repos/MetaCubeX/mihomo/releases --jq '.[0].assets[] | select(.name | contains("linux-amd64") and (contains("compatible")|not) and endswith(".gz")) | .browser_download_url' | head -n 1)
           
-          echo "📦 Downloading mihomo version: $LATEST_TAG"
-          wget -q "https://github.com/MetaCubeX/mihomo/releases/download/${LATEST_TAG}/mihomo-linux-amd64-${LATEST_TAG}.gz"
-          gunzip mihomo-linux-amd64-${LATEST_TAG}.gz
-          chmod +x mihomo-linux-amd64-${LATEST_TAG}
-          sudo mv mihomo-linux-amd64-${LATEST_TAG} /usr/local/bin/mihomo
+          echo "⬇️ Downloading from: $DOWNLOAD_URL"
+          
+          # 下载并重命名为统一名称，方便后续处理
+          wget -q -O mihomo.gz "$DOWNLOAD_URL"
+          
+          # 解压
+          gunzip mihomo.gz
+          
+          # 授权并移动
+          chmod +x mihomo
+          sudo mv mihomo /usr/local/bin/mihomo
+          
+          # 验证
           mihomo -v
 
       - name: Compile rule sets
