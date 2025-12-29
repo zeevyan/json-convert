@@ -5,8 +5,9 @@ on:
     branches:
       - main
     paths:
-      - '**.json'
-  workflow_dispatch:
+      - '**.json'          # 只有 main 分支下的 JSON 文件变动时才触发
+      # 如果你只想限制在 rules 目录下，请改为 - 'rules/*.json'
+  workflow_dispatch:      # 保持手动触发按钮
 
 permissions:
   contents: write
@@ -43,14 +44,14 @@ jobs:
         run: |
           mkdir -p release_files
           
-          for json_file in rules/*.json; do
+          # 查找所有 JSON 文件（排除隐藏目录）
+          find . -name "*.json" -not -path "./.*" | while read json_file; do
             filename=$(basename "$json_file" .json)
             echo "------------------------------------------------"
             echo "🚀 正在处理: $filename"
             
-            # === 1. 生成 sing-box .srs (自动处理 Domain/IP/Port) ===
-            sing-box rule-set compile "$json_file" -o "rules/${filename}.srs"
-            cp "rules/${filename}.srs" "release_files/"
+            # === 1. 生成 sing-box .srs ===
+            sing-box rule-set compile "$json_file" -o "release_files/${filename}.srs"
             echo "✅ 已生成 sing-box SRS"
             
             # === 2. 提取并生成 Mihomo .mrs (域名类) ===
@@ -60,8 +61,7 @@ jobs:
             jq -r '.rules[].domain[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_domain"
             
             if [ $(grep -c "  - " "$temp_domain") -gt 0 ]; then
-              mihomo convert-ruleset domain yaml "$temp_domain" "rules/${filename}.mrs"
-              cp "rules/${filename}.mrs" "release_files/"
+              mihomo convert-ruleset domain yaml "$temp_domain" "release_files/${filename}.mrs"
               echo "✅ 已生成 Mihomo Domain MRS"
             fi
 
@@ -71,8 +71,7 @@ jobs:
             jq -r '.rules[].ip_cidr[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_ip"
             
             if [ $(grep -c "  - " "$temp_ip") -gt 0 ]; then
-              mihomo convert-ruleset ipcidr yaml "$temp_ip" "rules/${filename}-ip.mrs"
-              cp "rules/${filename}-ip.mrs" "release_files/"
+              mihomo convert-ruleset ipcidr yaml "$temp_ip" "release_files/${filename}-ip.mrs"
               echo "✅ 已生成 Mihomo IP MRS"
             fi
             
@@ -91,11 +90,6 @@ jobs:
             --title "Rule Sets (Auto Updated)" \
             --notes "🕐 最后更新: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST
             
-            ## 📥 使用说明
-            - **sing-box**: 使用 \`${{ github.repository }}/releases/download/latest/文件名.srs\`
-            - **Mihomo (域名)**: 使用 \`文件名.mrs\` (behavior: domain)
-            - **Mihomo (IP)**: 使用 \`文件名-ip.mrs\` (behavior: ipcidr)
-            
             ## 📋 文件列表
             $(ls -1 release_files/ | sed 's/^/- /')" \
             release_files/*
@@ -106,7 +100,10 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add rules/*.srs rules/*.mrs
+          # 将编译后的文件同步到仓库（可选，如果只需要 Release 可以删掉这部分）
+          mkdir -p ./compiled_rules/
+          cp release_files/* ./compiled_rules/
+          git add ./compiled_rules/*
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
