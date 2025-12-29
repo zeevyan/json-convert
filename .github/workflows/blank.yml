@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - '**.json'       # 只有 JSON 文件变动时触发
-  workflow_dispatch:    # 手动触发按钮
+      - '**.json'
+  workflow_dispatch:
 
 permissions:
-  contents: write       # 允许发布 Release 和提交代码
+  contents: write
 
 jobs:
   build:
@@ -25,10 +25,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 使用 gh api 获取最新 tag (包含 pre-release)，解决速率限制问题
           LATEST_TAG=$(gh api repos/SagerNet/sing-box/releases --jq '.[0].tag_name')
           VERSION=${LATEST_TAG#v}
-          
           echo "📦 Downloading sing-box version: $VERSION"
           wget -q "https://github.com/SagerNet/sing-box/releases/download/${LATEST_TAG}/sing-box-${VERSION}-linux-amd64.tar.gz"
           tar -xzf "sing-box-${VERSION}-linux-amd64.tar.gz"
@@ -39,8 +37,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 使用 gh release view 获取最新正式版 tag
-          LATEST_TAG=$(gh release view MetaCubeX/mihomo --json tagName -q .tagName)
+          # 修复：使用 gh api 获取最新 tag (无论是否为 pre-release)，解决 release not found 问题
+          LATEST_TAG=$(gh api repos/MetaCubeX/mihomo/releases --jq '.[0].tag_name')
           
           echo "📦 Downloading mihomo version: $LATEST_TAG"
           wget -q "https://github.com/MetaCubeX/mihomo/releases/download/${LATEST_TAG}/mihomo-linux-amd64-${LATEST_TAG}.gz"
@@ -53,20 +51,18 @@ jobs:
         run: |
           mkdir -p release_files
           
-          # 查找所有 JSON 文件（排除隐藏目录）
           find . -name "*.json" -not -path "./.*" | while read json_file; do
             filename=$(basename "$json_file" .json)
             echo "------------------------------------------------"
             echo "🚀 正在处理: $filename"
             
-            # === 1. 生成 sing-box .srs ===
+            # 1. sing-box SRS
             sing-box rule-set compile "$json_file" -o "release_files/${filename}.srs"
             echo "✅ 已生成 sing-box SRS"
             
-            # === 2. 提取并生成 Mihomo .mrs (域名类) ===
+            # 2. Mihomo Domain MRS
             temp_domain="temp_domain.yaml"
             echo "payload:" > "$temp_domain"
-            # 提取 domain_suffix 和 domain
             jq -r '.rules[].domain_suffix[]? // empty' "$json_file" | sed "s/^/  - '+./" | sed "s/$/'/" >> "$temp_domain"
             jq -r '.rules[].domain[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_domain"
             
@@ -75,10 +71,9 @@ jobs:
               echo "✅ 已生成 Mihomo Domain MRS"
             fi
 
-            # === 3. 提取并生成 Mihomo .mrs (IP 类) ===
+            # 3. Mihomo IP MRS
             temp_ip="temp_ip.yaml"
             echo "payload:" > "$temp_ip"
-            # 提取 ip_cidr
             jq -r '.rules[].ip_cidr[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_ip"
             
             if [ $(grep -c "  - " "$temp_ip") -gt 0 ]; then
