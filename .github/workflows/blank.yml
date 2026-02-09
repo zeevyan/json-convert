@@ -37,24 +37,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # === 修复重点 ===
-          # 不再猜测文件名，而是直接筛选 assets 列表
-          # 逻辑：查找包含 "linux-amd64" 且以 ".gz" 结尾，同时不包含 "compatible" (旧架构) 的文件链接
+          # 直接筛选 assets 列表，获取 linux-amd64 非 compatible 版本
           DOWNLOAD_URL=$(gh api repos/MetaCubeX/mihomo/releases --jq '.[0].assets[] | select(.name | contains("linux-amd64") and (contains("compatible")|not) and endswith(".gz")) | .browser_download_url' | head -n 1)
-          
           echo "⬇️ Downloading from: $DOWNLOAD_URL"
-          
-          # 下载并重命名为统一名称，方便后续处理
           wget -q -O mihomo.gz "$DOWNLOAD_URL"
-          
-          # 解压
           gunzip mihomo.gz
-          
-          # 授权并移动
           chmod +x mihomo
           sudo mv mihomo /usr/local/bin/mihomo
-          
-          # 验证
           mihomo -v
 
       - name: Compile rule sets
@@ -66,22 +55,27 @@ jobs:
             echo "------------------------------------------------"
             echo "🚀 正在处理: $filename"
             
-            # 1. sing-box SRS
+            # 1. sing-box SRS 编译
             sing-box rule-set compile "$json_file" -o "release_files/${filename}.srs"
             echo "✅ 已生成 sing-box SRS"
             
-            # 2. Mihomo Domain MRS
+            # 2. Mihomo Domain MRS 编译 (含后缀、全域名、关键字)
             temp_domain="temp_domain.yaml"
             echo "payload:" > "$temp_domain"
+            
+            # 提取 domain_suffix (格式: +.google.com)
             jq -r '.rules[].domain_suffix[]? // empty' "$json_file" | sed "s/^/  - '+./" | sed "s/$/'/" >> "$temp_domain"
+            # 提取 domain (格式: google.com)
             jq -r '.rules[].domain[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_domain"
+            # 提取 domain_keyword (格式: keyword:google)
+            jq -r '.rules[].domain_keyword[]? // empty' "$json_file" | sed "s/^/  - 'keyword:/" | sed "s/$/'/" >> "$temp_domain"
             
             if [ $(grep -c "  - " "$temp_domain") -gt 0 ]; then
               mihomo convert-ruleset domain yaml "$temp_domain" "release_files/${filename}.mrs"
               echo "✅ 已生成 Mihomo Domain MRS"
             fi
 
-            # 3. Mihomo IP MRS
+            # 3. Mihomo IP MRS 编译
             temp_ip="temp_ip.yaml"
             echo "payload:" > "$temp_ip"
             jq -r '.rules[].ip_cidr[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_ip"
