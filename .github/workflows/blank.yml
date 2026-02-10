@@ -1,123 +1,257 @@
 name: Build Rule Sets (SRS + MRS)
 
+
+
 on:
+
   push:
+
     branches:
+
       - main
+
     paths:
+
       - '**.json'
+
   workflow_dispatch:
 
+
+
 permissions:
+
   contents: write
 
+
+
 jobs:
+
   build:
+
     runs-on: ubuntu-latest
+
     
+
     steps:
+
       - name: Checkout repository
+
         uses: actions/checkout@v4
+
         with:
+
           token: ${{ secrets.GITHUB_TOKEN }}
 
+
+
       - name: Download sing-box (Pre-release)
+
         env:
+
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
         run: |
+
           LATEST_TAG=$(gh api repos/SagerNet/sing-box/releases --jq '.[0].tag_name')
+
           VERSION=${LATEST_TAG#v}
+
           echo "📦 Downloading sing-box version: $VERSION"
+
           wget -q "https://github.com/SagerNet/sing-box/releases/download/${LATEST_TAG}/sing-box-${VERSION}-linux-amd64.tar.gz"
+
           tar -xzf "sing-box-${VERSION}-linux-amd64.tar.gz"
+
           sudo mv "sing-box-${VERSION}-linux-amd64/sing-box" /usr/local/bin/
+
           sing-box version
 
+
+
       - name: Download mihomo
+
         env:
+
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
         run: |
-          # 直接筛选 assets 列表，获取 linux-amd64 非 compatible 版本
+
+          # === 修复重点 ===
+
+          # 不再猜测文件名，而是直接筛选 assets 列表
+
+          # 逻辑：查找包含 "linux-amd64" 且以 ".gz" 结尾，同时不包含 "compatible" (旧架构) 的文件链接
+
           DOWNLOAD_URL=$(gh api repos/MetaCubeX/mihomo/releases --jq '.[0].assets[] | select(.name | contains("linux-amd64") and (contains("compatible")|not) and endswith(".gz")) | .browser_download_url' | head -n 1)
+
+          
+
           echo "⬇️ Downloading from: $DOWNLOAD_URL"
+
+          
+
+          # 下载并重命名为统一名称，方便后续处理
+
           wget -q -O mihomo.gz "$DOWNLOAD_URL"
+
+          
+
+          # 解压
+
           gunzip mihomo.gz
+
+          
+
+          # 授权并移动
+
           chmod +x mihomo
+
           sudo mv mihomo /usr/local/bin/mihomo
+
+          
+
+          # 验证
+
           mihomo -v
 
+
+
       - name: Compile rule sets
+
         run: |
+
           mkdir -p release_files
+
           
+
           find . -name "*.json" -not -path "./.*" | while read json_file; do
+
             filename=$(basename "$json_file" .json)
+
             echo "------------------------------------------------"
+
             echo "🚀 正在处理: $filename"
+
             
-            # 1. sing-box SRS 编译
+
+            # 1. sing-box SRS
+
             sing-box rule-set compile "$json_file" -o "release_files/${filename}.srs"
+
             echo "✅ 已生成 sing-box SRS"
+
             
-            # 2. Mihomo Domain MRS 编译 (含后缀、全域名、关键字)
+
+            # 2. Mihomo Domain MRS
+
             temp_domain="temp_domain.yaml"
+
             echo "payload:" > "$temp_domain"
-            
-            # 提取 domain_suffix (格式: +.google.com)
+
             jq -r '.rules[].domain_suffix[]? // empty' "$json_file" | sed "s/^/  - '+./" | sed "s/$/'/" >> "$temp_domain"
-            # 提取 domain (格式: google.com)
+
             jq -r '.rules[].domain[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_domain"
-            # 提取 domain_keyword (格式: keyword:google)
-            jq -r '.rules[].domain_keyword[]? // empty' "$json_file" | sed "s/^/  - 'keyword:/" | sed "s/$/'/" >> "$temp_domain"
+
             
+
             if [ $(grep -c "  - " "$temp_domain") -gt 0 ]; then
+
               mihomo convert-ruleset domain yaml "$temp_domain" "release_files/${filename}.mrs"
+
               echo "✅ 已生成 Mihomo Domain MRS"
+
             fi
 
-            # 3. Mihomo IP MRS 编译
+
+
+            # 3. Mihomo IP MRS
+
             temp_ip="temp_ip.yaml"
+
             echo "payload:" > "$temp_ip"
+
             jq -r '.rules[].ip_cidr[]? // empty' "$json_file" | sed "s/^/  - '/" | sed "s/$/'/" >> "$temp_ip"
+
             
+
             if [ $(grep -c "  - " "$temp_ip") -gt 0 ]; then
+
               mihomo convert-ruleset ipcidr yaml "$temp_ip" "release_files/${filename}-ip.mrs"
+
               echo "✅ 已生成 Mihomo IP MRS"
+
             fi
+
             
+
             rm -f "$temp_domain" "$temp_ip"
+
           done
 
+
+
       - name: Delete existing release
+
         env:
+
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
         run: |
+
           gh release delete latest --yes --cleanup-tag || true
 
+
+
       - name: Create Release
+
         env:
+
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
         run: |
+
           gh release create latest \
+
             --title "Rule Sets (Auto Updated)" \
+
             --notes "🕐 最后更新: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST
+
             
+
             ## 📋 文件列表
+
             $(ls -1 release_files/ | sed 's/^/- /')" \
+
             release_files/*
 
+
+
       - name: Commit and push
+
         run: |
+
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
+
           git config --local user.name "github-actions[bot]"
+
           
+
           mkdir -p ./compiled_rules/
+
           cp release_files/* ./compiled_rules/
+
           
+
           git add ./compiled_rules/*
+
           if git diff --staged --quiet; then
+
             echo "No changes to commit"
+
           else
+
             git commit -m "Auto-build: Update SRS/MRS $(date +'%Y-%m-%d %H:%M')"
+
             git push
+
           fi
