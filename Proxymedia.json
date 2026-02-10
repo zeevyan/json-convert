@@ -331,11 +331,6 @@
         "52.223.224.0/19",
         "99.181.64.0/18"
       ]
-    },
-    {
-      "domain_regex": [
-        "^https?:\\/\\/www\\.amazon\\.com\\/(Amazon-Video|gp\\/video)\\/"
-      ]
     }
   ]
 }
