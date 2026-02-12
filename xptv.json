@@ -3,8 +3,11 @@
   "rules": [
     {
       "domain": [
+        "my.microsoftpersonalcontent.com",
+        "snssdk.com",
         "c1.ddbbffcdn.com",
         "c1.rrcdnbf2.com",
+        "snssdk.com",
         "c1.rrcdnbf3.com",
         "c1.rrcdnbf4.com",
         "c1.rrcdnbf5.com",
