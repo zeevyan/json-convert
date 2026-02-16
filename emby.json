@@ -4,7 +4,9 @@
     {      
       "domain": 
       [
-        "emby.dnscf.dpdns.org"
+        "emby.dnscf.dpdns.org",
+        "drive.hohai.eu.org",
+        "emby-npo.hohai.eu.org"
       ],
       "domain_suffix": [
         "misty.cx",
@@ -14,9 +16,6 @@
         "public.shrekmedia.org",
         "69yun69.com",
         "uhdnow.com"
-      ],
-      "domain_keyword": [
-        "emby"
       ]
     }
   ]
