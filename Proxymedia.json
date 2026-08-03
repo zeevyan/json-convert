@@ -3,8 +3,6 @@
   "rules": [
     {
       "domain": [
-        "vip.lz-cdn17.com",
-        "vip.lz-cdn16.com",
         "cbsi.live.ott.irdeto.com",
         "cbsplaylistserver.aws.syncbak.com",
         "cbsservice.aws.syncbak.com",
@@ -61,6 +59,8 @@
     },
     {
       "domain_suffix": [
+        "vip.lz-cdn*.com",
+        "vip.lz-cdn**.com",
         "hytto.com",
         "eny7kg.com",
         "mypikpak.net",
