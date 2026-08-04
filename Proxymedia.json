@@ -3,6 +3,9 @@
   "rules": [
     {
       "domain": [
+        "vip.lz-cdn3.com",
+        "vip.lz-cdn16.com",
+        "vip.lz-cdn17.com",
         "cbsi.live.ott.irdeto.com",
         "cbsplaylistserver.aws.syncbak.com",
         "cbsservice.aws.syncbak.com",
@@ -255,6 +258,7 @@
         "olevod.one",
         "olevod.io",
         "olevod.tv",
+        "oulehdtv.tv",
         "olevodtv.com",
         "olemovienews.com",
         "pbs.org",
