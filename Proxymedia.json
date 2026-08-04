@@ -4,6 +4,7 @@
     {
       "domain": [
         "vip.lz-cdn3.com",
+        "video.luojiangping.com",
         "vip.lz-cdn16.com",
         "vip.lz-cdn17.com",
         "cbsi.live.ott.irdeto.com",
@@ -62,7 +63,6 @@
     },
     {
       "domain_suffix": [
-        "vip.lz-cdn*.com",
         "vip.lz-cdn**.com",
         "hytto.com",
         "eny7kg.com",
